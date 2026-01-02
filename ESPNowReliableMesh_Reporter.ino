@@ -34,6 +34,7 @@ typedef struct struct_message {
   float accel_y;       // acceleration Y
   float accel_z;       // acceleration Z
 } struct_message;
+
 sensors_event_t humidity, temp;
 struct_message myData;
 struct_message incomingData;
@@ -55,7 +56,6 @@ void rememberPacket(int packetId) {
     seenPackets.erase(seenPackets.begin());
   }
 }
-
 
 
 // --- Receiver callback ---
@@ -121,9 +121,9 @@ void setup() {
   Serial.printf("Size of sender: %d\n", sizeof(myData.sender));
     
   esp_now_peer_info_t peerInfo = {};
-  uint8_t peerAddress[] = {0xCC, 0xBA, 0x97, 0x33, 0xCD, 0x64}; // your target MAC
+  //uint8_t peerAddress[] = {0xCC, 0xBA, 0x97, 0x33, 0xCD, 0x64}; // your target MAC
   //uint8_t peerAddress[] = {0x94, 0x54, 0xC5, 0x4D, 0xA5, 0xA0}; // your target MAC
-
+  uint8_t peerAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // Broadcasting MAC
   memcpy(peerInfo.peer_addr, peerAddress, 6);  // copy 6 bytes into peerInfo.peer_addr
   peerInfo.channel = 0;     // same WiFi channel
   peerInfo.encrypt = false; // no encryption
@@ -195,7 +195,6 @@ void broadcastData() {
   } else {
     Serial.println("Error broadcasting packet");
   }
-
   
 
 }
@@ -205,17 +204,13 @@ void loop() {
   bool timer1Done;
   bool timer2Done;
 
-  
-
-
   timer2Done = timer2.timer_LOOP(true, 5000);
   if (timer2Done){
     shtc3.getEvent(&humidity, &temp);// populate temp and humidity objects with fresh data
     //myData.temperature = temp.temperature;
     //myData.humidity = humidity.relative_humidity;
     Serial.print("Temperature: "); Serial.print(temp.temperature); Serial.println(" degrees C");
-    Serial.print("Humidity: "); Serial.print(humidity.relative_humidity); Serial.println("% rH");
-       
+    Serial.print("Humidity: "); Serial.print(humidity.relative_humidity); Serial.println("% rH");       
     //Loops
     broadcastData();
   }
