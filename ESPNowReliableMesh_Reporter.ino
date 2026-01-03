@@ -1,4 +1,16 @@
+/*===========================================================================================================================
+[Program Name]             :ESPNowReliableMesh_Reporter    
+[Catagory]                 :mRTU, General device communication
+[Description]              :ESPNow mesh with TTL and Package duplicate functionality with sensors for data colecting
+[Author]                   :Ing. Bruno Villalobos R.
+[Created using Arduino Ver :Arduino IDE 2.3.7
+[Support and FeedBack]     :   
+[Revison History]          :1.0 VersiOn Funcional, alfa 1   
+[Date - Change]            :02/01/2026
+===========================================================================================================================*/
+
 #include <WiFi.h>
+#include <esp_wifi.h>
 #include <esp_now.h>
 #include <vector>
 #include "Adafruit_SHTC3.h"
@@ -57,6 +69,20 @@ void rememberPacket(int packetId) {
   }
 }
 
+void addPeer(const uint8_t *mac) {
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(peerInfo.peer_addr, mac, 6);
+  
+  peerInfo.channel = 6; // MUST match the forced channel
+  peerInfo.encrypt = false;
+  
+  if (esp_now_add_peer(&peerInfo) == ESP_OK) {
+    Serial.printf("Peer %02X:%02X:%02X:%02X:%02X:%02X added\n",
+      mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  } else {
+    Serial.println("Failed to add peer");
+  }
+}
 
 // --- Receiver callback ---
 void OnDataRecv(const esp_now_recv_info *recv_info, const uint8_t *incomingDataBytes, int len) {
@@ -80,6 +106,7 @@ void OnDataRecv(const esp_now_recv_info *recv_info, const uint8_t *incomingDataB
   Serial.printf("Accel: X=%.2f Y=%.2f Z=%.2f\n", incomingData.accel_x, incomingData.accel_y, incomingData.accel_z);
   Serial.println("--------------------------------------------------");
 
+  // If the packed recived is the firts one then resent it 
   if (!isDuplicate(incomingData.packetId)) {
     rememberPacket(incomingData.packetId);
 
@@ -96,8 +123,6 @@ void OnDataRecv(const esp_now_recv_info *recv_info, const uint8_t *incomingDataB
     Serial.println("Duplicate packet ignored");
   }
 
-  
-
 }
 
 
@@ -105,7 +130,12 @@ void OnDataRecv(const esp_now_recv_info *recv_info, const uint8_t *incomingDataB
 void setup() {
   Serial.begin(115200);
   WiFi.mode(WIFI_STA);
-
+  // Force channel 6 (or any channel 1–13)
+  esp_wifi_set_promiscuous(true);
+  esp_wifi_set_channel(6, WIFI_SECOND_CHAN_NONE);
+  esp_wifi_set_promiscuous(false);
+  
+  //ESP_NOW init
   esp_err_t espInitEstatus = esp_now_init();
   delay(100); // short pause after esp_now_init()
  
@@ -113,6 +143,8 @@ void setup() {
     Serial.println("Error initializing ESP-NOW");
     return;
   }
+
+  // For troubleshooting 
   Serial.println (String(espInitEstatus));
   Serial.printf("Struct size: %d bytes\n", sizeof(myData));
   Serial.printf("Size of struct_message: %d\n", sizeof(struct_message));
@@ -120,39 +152,57 @@ void setup() {
   Serial.printf("Size of int: %d\n", sizeof(int));
   Serial.printf("Size of sender: %d\n", sizeof(myData.sender));
     
-  esp_now_peer_info_t peerInfo = {};
-  //uint8_t peerAddress[] = {0xCC, 0xBA, 0x97, 0x33, 0xCD, 0x64}; // your target MAC
-  //uint8_t peerAddress[] = {0x94, 0x54, 0xC5, 0x4D, 0xA5, 0xA0}; // your target MAC
-  uint8_t peerAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // Broadcasting MAC
-  memcpy(peerInfo.peer_addr, peerAddress, 6);  // copy 6 bytes into peerInfo.peer_addr
-  peerInfo.channel = 0;     // same WiFi channel
-  peerInfo.encrypt = false; // no encryption
+  //Adding peers
+  //Node A: Waweshare 6DOR
+  /*String Nodename = "NodeA";
+  uint8_t macB[] = {0x94,0x54,0xC5,0x4D,0xA5,0xA0}; //ESP Wroom in breadboard
+  uint8_t macC[] = {0x84,0xFC,0xE6,0x51,0x4E,0x3C}; // ESP-USB Dongle
+  addPeer(macB);
+  addPeer(macC);
+  */
+  
+ 
+  //Node B: ESP32S3 USB-Dongle
+  String  Nodename = "NodeB";
+  uint8_t macA[] = {0xCC,0xBA,0x97,0x33,0xCD,0x64}; //Waweshare 6DOR
+  uint8_t macC[] = {0x94,0x54,0xC5,0x4D,0xA5,0xA0}; //ESP Wroom in breadboard
+  addPeer(macA);
+  addPeer(macC);
+  
 
-  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-    Serial.println("Failed to add peer");
-  } else {
-    Serial.println("Peer added successfully");
-  }
+  /*
 
+  //Node C: ESP32-Wroom
+  String Nodename = "NodeC";   
+  uint8_t macA[] = {0xCC,0xBA,0x97,0x33,0xCD,0x64}; //Waweshare 6DOR
+  uint8_t macB[] = {0x84,0xFC,0xE6,0x51,0x4E,0x3C}; // ESP-USB Dongle
+  addPeer(macA);
+  addPeer(macB);
+  
+*/
+ 
   Serial.println(WiFi.macAddress());
   delay(4000);
 
+  // ESP_NOW call back function regitering
   esp_now_register_recv_cb(OnDataRecv);
 
   // Identify this node (change per board)
-  strcpy(myData.sender, "NodeB");  // Change to NodeB or NodeC
+  strcpy(myData.sender, Nodename.c_str());   // NodeA, NodeB or NodeC
 
-  // Sensors init
+  // Sensors init ..............................................................
   //Temp & Humedity
-   Wire.begin(16, 17);
+  Wire.begin(16, 17);
 
   while (!Serial)
-    delay(10);     // will pause Zero, Leonardo, etc until serial console opens
-    Serial.println("SHTC3 test");
-    if (! shtc3.begin()) {
-      Serial.println("Couldn't find SHTC3");
-      delay(4000);
+  delay(10);     // will pause Zero, Leonardo, etc until serial console opens
+  
+  Serial.println("SHTC3 test");
+  if (! shtc3.begin()) {
+    Serial.println("Couldn't find SHTC3");
+    delay(4000);
   }
+
   Serial.println("Found SHTC3 sensor");
   // Wake up when GPIO 0 goes HIGH
   //int result2 = esp_sleep_enable_ext0_wakeup(GPIO_NUM_32, 1);  
@@ -164,8 +214,6 @@ void setup() {
   else {
   Serial.println("Failed to set Input Wake-Up as wake-up source.");
   }
-
-
 
 }
 
@@ -196,7 +244,6 @@ void broadcastData() {
     Serial.println("Error broadcasting packet");
   }
   
-
 }
 
 // --- Loop ---
@@ -220,6 +267,5 @@ void loop() {
   Serial.println("Getting Sleeping");
   esp_deep_sleep_start();     // Enter light sleep
   }
-  
   
 }
